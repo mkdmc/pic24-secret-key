@@ -25,7 +25,7 @@ void plotPoints(uint8_t xctr, uint8_t yctr, uint8_t x, uint8_t y) {
 // Draw a hollow circle at (x,y) with radius r
 void drawCircle(uint8_t x1, uint8_t y1, uint8_t r) {
     uint8_t x = 0, y = r;
-    uint8_t p = 1 - r; 
+    int16_t p = 1 - r; 
     plotPoints(x1, y1, x, y);
     while (x < y) {
         x++;
