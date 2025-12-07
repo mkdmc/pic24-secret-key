@@ -30,6 +30,7 @@
 #include "SH1101A.h"
 #include "TouchSense.h"
 #include "RGBLeds.h"
+#include "Font5x7.h"
 
 #define INIT_CLOCK() OSCCON = 0x3302; CLKDIV = 0x0000;
 

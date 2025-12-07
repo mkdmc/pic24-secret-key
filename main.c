@@ -1,11 +1,12 @@
 #include "PIC24FStarter.h"
+#include <stdlib.h>
+#include <stdbool.h>
 
-// Debounce Threshold: Button must be stable for this many cycles to register
-#define DEBOUNCE_THRESH  2
-
-// Gap Timeout: How long to wait (in 10ms loops) before deciding the swipe is finished.
-// 50 * 10ms = 500ms grace period between buttons.
-#define SWIPE_GAP_LIMIT  50
+// --- Configuration ---
+#define DEBOUNCE_THRESH  4      // Cycles a touch must be stable to register
+#define TOUCH_TIMEOUT    5000  // Cycles to wait after release before submitting pattern
+#define RESULT_DELAY     20000   // Cycles to hold result display
+#define PATTERN_MAX      10     // Max nodes in a pattern
 
 // Screen Resolution is 128x64. Center is (64, 32).
 // Button Mapping:
@@ -17,13 +18,10 @@
 
 const uint8_t btnX[5] = {64, 104, 64, 24, 64}; // X positions
 const uint8_t btnY[5] = {12, 32, 52, 32, 32};  // Y positions
-const uint8_t RADIUS = 6;                      // Circle Radius
 
-// --- PASSWORD CONFIGURATION ---
-uint8_t PASSWORD[10];
-uint8_t PASS_LEN = 0;
+// --- Global Variables ---
 
-// Application States
+// State Machine States
 enum AppState {
     STATE_SET_PATTERN = 0, // Recording new password
     STATE_CONFIRM_SET,     // Visual feedback that pass is saved
@@ -34,257 +32,298 @@ enum AppState {
 
 uint8_t current_state = STATE_SET_PATTERN;
 
-// Delay function using Timer1
-void delay(unsigned int milliseconds) {
-    T1CONbits.TCKPS = 0b11; // Prescale 1:256
-    PR1 = 47; TMR1 = 0;     // Reset timer counter
-    T1CONbits.TON = 1;      // Turn on Timer1
-    unsigned int count = 0;
-    while (count < milliseconds) {
-        while (!IFS0bits.T1IF); // Wait for Timer1 interrupt flag
-        IFS0bits.T1IF = 0;      // Clear Timer1 interrupt flag
-        count++;
-    }
-    T1CONbits.TON = 0;      // Turn off Timer1
-}
+// Pattern Storage
+uint8_t PASSWORD[PATTERN_MAX];
+uint8_t PASS_LEN = 0;
 
-// Helper function to plot 8 symmetric points of a circle
-void plotPoints(uint8_t xctr, uint8_t yctr, uint8_t x, uint8_t y) {
-    PutPixel(xctr + x, yctr + y); PutPixel(xctr - x, yctr + y);
-    PutPixel(xctr + x, yctr - y); PutPixel(xctr - x, yctr - y);
-    PutPixel(xctr + y, yctr + x); PutPixel(xctr - y, yctr + x);
-    PutPixel(xctr + y, yctr - x); PutPixel(xctr - y, yctr - x);
-}
+// Current Entry Variables
+uint8_t patternBuf[PATTERN_MAX];
+uint8_t patternIdx = 0;
+bool visitedMask[5]; // Tracks which nodes are already used in current stroke
 
-// Draw a hollow circle at (x,y) with radius r
-void drawCircle(uint8_t x1, uint8_t y1, uint8_t r) {
-    uint8_t x = 0, y = r;
-    int16_t p = 1 - r; 
-    plotPoints(x1, y1, x, y);
-    while (x < y) {
-        x++;
-        if (p < 0) p += 2 * x + 1;
-        else p += 2 * (x - --y) + 1;
-        plotPoints(x1, y1, x, y);
+// Debounce / Input Globals
+int8_t lastSeenButton = -1;
+uint8_t stableCount = 0;
+uint32_t idleTimer = 0;
+
+// --- Graphic Helpers ---
+
+// Bresenham's Line Algorithm
+void GFX_DrawLine(int x0, int y0, int x1, int y1) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    for (;;) {
+        PutPixel(x0, y0);
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
     }
 }
 
-// Helper function to draw a filled circle (for pressed state)
-void drawFilledCircle(uint8_t x1, uint8_t y1, uint8_t r) {
-    uint8_t i;
-    for(i = 0; i <= r; i++) {
-        drawCircle(x1, y1, i);
+// Draw Node (Hollow or Filled)
+void GFX_DrawNode(uint8_t x, uint8_t y, bool filled) {
+    // Draw Node Outline (Cross-like shape)
+    PutPixel(x, y-3); PutPixel(x, y+3);
+    PutPixel(x-3, y); PutPixel(x+3, y);
+    PutPixel(x-1, y-2); PutPixel(x+1, y-2);
+    PutPixel(x-2, y-1); PutPixel(x+2, y-1);
+    PutPixel(x-2, y+1); PutPixel(x+2, y+1);
+    PutPixel(x-1, y+2); PutPixel(x+1, y+2);
+
+    if (filled) {
+        PutPixel(x, y);
+        PutPixel(x-1, y); PutPixel(x+1, y);
+        PutPixel(x, y-1); PutPixel(x, y+1);
     }
 }
 
-// Check if a button ID is already in the current path
-// Returns 1 if present, 0 if not
-uint8_t isNodeInPath(uint8_t id, uint8_t path[], uint8_t len) {
-    uint8_t i;
-    for(i=0; i<len; i++) {
-        if (path[i] == id) return 1;
-    }
-    return 0;
-}
-
-// Compare entered path with password
-uint8_t checkPassword(uint8_t path[], uint8_t len) {
-    if (len != PASS_LEN) return 0;
+// Draw a single character from the font array
+void UI_DrawChar(int x, int y, char c) {
+    if (c < 32 || c > 122) c = 32; // basic safety
+    int index = c - 32;
     
-    uint8_t i;
-    for(i=0; i<len; i++) {
-        if (path[i] != PASSWORD[i]) return 0;
+    for (int i = 0; i < 5; i++) {
+        uint8_t line = Font5x7[index][i];
+        for (int j = 0; j < 8; j++) {
+            if (line & (1 << j)) {
+                PutPixel(x + i, y + j);
+            }
+        }
     }
-    return 1;
 }
+
+// Draw a string of text
+void UI_DrawString(int x, int y, char* str) {
+    while (*str) {
+        UI_DrawChar(x, y, *str);
+        x += 6; // 5px width + 1px spacing
+        str++;
+    }
+}
+
+// Reset screen grid to initial state
+void UI_ResetGrid() {
+    SetColor(BLACK); 
+    ClearDevice(); 
+    SetColor(WHITE);
+    
+    for(int i=0; i<5; i++) {
+        GFX_DrawNode(btnX[i], btnY[i], false);
+        visitedMask[i] = false;
+    }
+    patternIdx = 0;
+    idleTimer = 0;
+}
+
+// --- Input Processing ---
+
+// Helper to get single stable button press (filters noise where multiple pads trigger)
+int8_t GetStableInput() {
+    int8_t detected = -1;
+    uint8_t pressCount = 0;
+
+    for (uint8_t i = 0; i < 5; i++) {
+        if (buttons[i]) {
+            detected = i;
+            pressCount++;
+        }
+    }
+
+    // Ignore if multiple pads are triggered (noise reduction)
+    if (pressCount > 1) return -1;
+    
+    return detected;
+}
+
+// --- Logic Helpers ---
+
+bool CheckPassword() {
+    if (patternIdx != PASS_LEN) return false;
+    for (uint8_t k=0; k<PASS_LEN; k++) {
+        if (patternBuf[k] != PASSWORD[k]) return false;
+    }
+    return true;
+}
+
+void SavePassword() {
+    for (uint8_t k=0; k<patternIdx; k++) {
+        PASSWORD[k] = patternBuf[k];
+    }
+    PASS_LEN = patternIdx;
+}
+
+// Blocking Delay
+void delay(unsigned int delay_count) {
+    T1CON = 0x8030; // Timer 1 ON, Prescale 1:256
+    TMR1 = 0;
+    while(TMR1 < delay_count);
+    T1CON = 0;
+}
+
+// --- Main Application ---
 
 int main(void) {
-    // Hardware Initialization
+    // Hardware Init
     INIT_CLOCK(); 
     CTMUInit(); 
-    RGBMapColorPins();
-    
+    RGBMapColorPins(); 
     RGBTurnOnLED();
-    ResetDevice();
+    ResetDevice(); 
+
+    // --- Splash Screen ---
+    SetColor(BLACK);
     ClearDevice();
+    SetColor(WHITE);
     
-    // 2. Debounce State Tracking
-    // counters: How many consecutive frames the button has been 'raw' pressed
-    uint8_t debounce_counters[5] = {0, 0, 0, 0, 0};
+    // Display "Set a new" at (x=37, y=20)
+    UI_DrawString(37, 20, "Set a new");
+    // Display "password" at (x=40, y=30)
+    UI_DrawString(40, 30, "password");
     
-    // current_btn_state: The "clean" on/off state used for logic/drawing
-    uint8_t current_btn_state[5] = {0, 0, 0, 0, 0};
+    // Set LED to Cyan to indicate Info/Message
+    SetRGBs(0, 255, 255);
     
-    // Pattern Logic Variables
-    uint8_t current_path[10]; // Stores the user's sequence
-    uint8_t path_idx = 0;
-    uint16_t gap_timer = 0; // Timer to track "no touch" duration
-    uint16_t state_timer = 0; // Generic timer for state transitions
+    // Show message for ~2 seconds
+    delay(RESULT_DELAY * 3);
+    // -------------------------------
     
-    // Visual State Management
-    // 0 = Hollow (Inactive), 1 = Filled (Active)
-    uint8_t node_visual_state[5] = {0,0,0,0,0}; 
-    uint8_t prev_visual_state[5] = {255,255,255,255,255}; // Force initial draw
+    // Initial State
+    current_state = STATE_SET_PATTERN;
+    UI_ResetGrid();
     
-    // Result feedback timer
-    uint16_t result_timer = 0;
-    uint8_t lock_state = 0; // 0: Input, 1: Success Show, 2: Fail Show
-    
-    while(1) { 
-        // Read touch sensors; updates the global 'buttons' array
-        ReadCTMU();
+    // Set LED to Magenta (Red + Blue) to indicate "Programming Mode"
+    SetRGBs(100, 0, 100); 
+
+    while(1) {
+        ReadCTMU(); 
+
+        // 1. Debounce Logic
+        int8_t rawInput = GetStableInput();
+        int8_t validTouch = -1;
         
-        uint8_t any_pressed_now = 0;
-        
-        // We filter the raw 'buttons[]' into 'current_btn_state[]'
-        for(uint8_t i = 0; i < 5; i++) {
-            if (buttons[i] == 1) {
-                // Button is physically active
-                if (debounce_counters[i] < DEBOUNCE_THRESH) {
-                    debounce_counters[i]++;
-                }
-            } else {
-                // Button is physically released
-                if (debounce_counters[i] > 0) {
-                    debounce_counters[i]--;
-                }
+        if (rawInput == lastSeenButton && rawInput != -1) {
+            stableCount++;
+            if (stableCount >= DEBOUNCE_THRESH) {
+                validTouch = rawInput; 
+                stableCount = DEBOUNCE_THRESH; // Clamp
             }
-            
-            // Hysteresis Logic:
-            // Switch to 1 only if counter fills up (sustained press)
-            // Switch to 0 only if counter empties (sustained release)
-            if (debounce_counters[i] == DEBOUNCE_THRESH) {
-                current_btn_state[i] = 1;
-            } else if (debounce_counters[i] == 0) {
-                current_btn_state[i] = 0;
-            }
-            if (current_btn_state[i]) any_pressed_now = 1;
+        } else {
+            stableCount = 0;
+            lastSeenButton = rawInput;
         }
+
+        // 2. State Machine Handling
         
-if (current_state == STATE_SET_PATTERN) {
-            // INDICATOR: Pulse Magenta to indicate "Recording Mode"
-            SetRGBs(100, 0, 100); 
+        if (current_state == STATE_CONFIRM_SET || current_state == STATE_SUCCESS || current_state == STATE_FAIL) {
+            // These states are handled by blocking delays inside transitions, 
+            // but if we loop back here, reset to appropriate interactive state.
+            UI_ResetGrid();
+            if (current_state == STATE_CONFIRM_SET || current_state == STATE_SUCCESS || current_state == STATE_FAIL) {
+                current_state = STATE_INPUT; // Default to Input mode after any result
+                SetRGBs(0, 0, 255); // Solid Blue
+            }
+        }
+
+        // 3. Process Input (Recording Pattern)
+        if (validTouch != -1) {
+            idleTimer = 0; // Reset timeout because user is touching
+
+            if (patternIdx < PATTERN_MAX) {
+                // Only register if node hasn't been visited in this stroke
+                if (!visitedMask[validTouch]) {
+                    
+                    patternBuf[patternIdx] = validTouch;
+                    visitedMask[validTouch] = true;
+
+                    // Graphics: Fill Node
+                    GFX_DrawNode(btnX[validTouch], btnY[validTouch], true);
+
+                    // Graphics: Draw Line from previous node
+                    if (patternIdx > 0) {
+                        uint8_t prev = patternBuf[patternIdx - 1];
+                        GFX_DrawLine(btnX[prev], btnY[prev], 
+                                     btnX[validTouch], btnY[validTouch]);
+                    }
+
+                    // Feedback: Flash Yellow briefly
+                    SetRGBs(255, 255, 0); 
+                    
+                    patternIdx++;
+                }
+            }
+        } 
+        else {
+            // 4. No Touch Detected - Handle Timeout / Submission
             
-            if (any_pressed_now) {
-                gap_timer = 0;
-                for(uint8_t i = 0; i < 5; i++) {
-                    if (current_btn_state[i] && !isNodeInPath(i, current_path, path_idx)) {
-                        if (path_idx < 10) {
-                            current_path[path_idx++] = i;
-                            node_visual_state[i] = 1; // Visual feedback
+            // Restore base LED color based on mode if not touching
+            if (idleTimer == 1) {
+                if (current_state == STATE_SET_PATTERN) SetRGBs(100, 0, 100); // Magenta
+                else if (current_state == STATE_INPUT)  SetRGBs(0, 0, 255);   // Blue
+            }
+
+            if (patternIdx > 0) {
+                // Pattern is in progress, check for timeout (finger lifted)
+                idleTimer++;
+                
+                if (idleTimer > TOUCH_TIMEOUT) {
+                    
+                    // --- TIMEOUT: Process the Pattern ---
+                    
+                    if (current_state == STATE_SET_PATTERN) {
+                        // Pattern Recording Complete
+                        SavePassword();
+                        
+                        // Transition to Confirmation
+                        current_state = STATE_CONFIRM_SET;
+                        
+                        // --- Success Message ---
+                        SetColor(BLACK);
+                        ClearDevice();
+                        SetColor(WHITE);
+                        UI_DrawString(28, 20, "Password set");
+                        UI_DrawString(28, 30, "successfully");
+                        
+                        SetRGBs(0, 255, 0); // Green for success
+                        delay(RESULT_DELAY * 2);
+                        // ---------------------------------
+                        
+                        // Move to Input Mode
+                        UI_ResetGrid();
+                        current_state = STATE_INPUT;
+                        SetRGBs(0, 0, 255); // Blue
+                    }
+                    else if (current_state == STATE_INPUT) {
+                        // Pattern Entry Complete - Validate
+                        if (CheckPassword()) {
+                            // Success
+                            SetRGBs(0, 255, 0); // Green
+                            // Draw Checkmark
+                            GFX_DrawLine(50, 40, 60, 50); 
+                            GFX_DrawLine(60, 50, 80, 20);
+                            current_state = STATE_SUCCESS;
+                        } else {
+                            // Fail
+                            SetRGBs(255, 0, 0); // Red
+                            // Draw X
+                            GFX_DrawLine(50, 20, 78, 48); 
+                            GFX_DrawLine(78, 20, 50, 48);
+                            current_state = STATE_FAIL;
                         }
-                    }
-                }
-            } 
-            else if (path_idx > 0) {
-                // User lifted finger after starting a pattern
-                gap_timer++;
-                if (gap_timer > SWIPE_GAP_LIMIT) {
-                    // Pattern complete. Save it.
-                    for(uint8_t k=0; k<path_idx; k++) PASSWORD[k] = current_path[k];
-                    PASS_LEN = path_idx;
-                    
-                    // Reset and move to confirmation
-                    gap_timer = 0;
-                    path_idx = 0;
-                    for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
-                    
-                    current_state = STATE_CONFIRM_SET;
-                    state_timer = 100; // 1 second confirmation
-                }
-            }
-        }
-        else if (current_state == STATE_CONFIRM_SET) {
-            // INDICATOR: Rapid Cyan Flash to confirm "Password Set"
-            if ((state_timer / 10) % 2 == 0) SetRGBs(0, 255, 255);
-            else SetRGBs(0, 0, 0);
-            
-            if (state_timer > 0) state_timer--;
-            else current_state = STATE_INPUT; // Go to locked mode
-        }
-        else if (current_state == STATE_INPUT) {
-            // INDICATOR: Solid Blue (Locked)
-            SetRGBs(0, 0, 255);
-            
-            if (any_pressed_now) {
-                gap_timer = 0;
-                for(uint8_t i = 0; i < 5; i++) {
-                    if (current_btn_state[i] && !isNodeInPath(i, current_path, path_idx)) {
-                        if (path_idx < 10) {
-                            current_path[path_idx++] = i;
-                            node_visual_state[i] = 1;
-                        }
-                    }
-                }
-            } 
-            else if (path_idx > 0) {
-                gap_timer++;
-                if (gap_timer > SWIPE_GAP_LIMIT) {
-                    // Validate
-                    if (checkPassword(current_path, path_idx)) {
-                        current_state = STATE_SUCCESS;
-                    } else {
-                        current_state = STATE_FAIL;
+                        
+                        delay(RESULT_DELAY);
+                        UI_ResetGrid();
+                        current_state = STATE_INPUT; // Return to lock screen
+                        SetRGBs(0, 0, 255); // Restore Blue
                     }
                     
-                    // Reset input buffers
-                    gap_timer = 0;
-                    path_idx = 0;
-                    state_timer = 150; // Show result for 1.5s
+                    idleTimer = 0;
                 }
             }
         }
-        else if (current_state == STATE_SUCCESS) {
-            SetRGBs(0, 255, 0); // Green
-            if (state_timer > 0) state_timer--;
-            else {
-                // Clear visual state and return to lock
-                for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
-                current_state = STATE_INPUT; 
-            }
-        }
-        else if (current_state == STATE_FAIL) {
-            SetRGBs(255, 0, 0); // Red
-            if (state_timer > 0) state_timer--;
-            else {
-                // Clear visual state and return to lock
-                for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
-                current_state = STATE_INPUT;
-            }
-        }
-        
-        // Loop through all 5 buttons
-        for (uint8_t i = 0; i < 5; i++) {
-            
-            // Only redraw if the state of the button has changed
-            if (node_visual_state[i] != prev_visual_state[i]) {
-                
-                // 1. Erase the old shape
-                // We draw a black filled circle to clear the area completely
-                SetColor(BLACK);
-                drawFilledCircle(btnX[i], btnY[i], RADIUS);
-                
-                // 2. Draw the new shape
-                SetColor(WHITE);
-                
-                if (node_visual_state[i] == 1) {
-                    // STATE: PRESSED
-                    // Draw a solid white circle (Active node)
-                    drawFilledCircle(btnX[i], btnY[i], RADIUS);
-                } else {
-                    // STATE: RELEASED
-                    // Draw a hollow circle with a center dot (Inactive node)
-                    drawCircle(btnX[i], btnY[i], RADIUS);
-                    PutPixel(btnX[i], btnY[i]); 
-                }
-                
-                // Update state tracker
-                prev_visual_state[i] = node_visual_state[i];
-            }
-        }
-        delay(10); // Short delay to debounce and limit refresh rate
     }
     
-    RGBTurnOffLED();
     return 0;
 }
