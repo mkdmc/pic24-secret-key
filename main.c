@@ -1,7 +1,11 @@
 #include "PIC24FStarter.h"
 
 // Debounce Threshold: Button must be stable for this many cycles to register
-#define DEBOUNCE_THRESH  4
+#define DEBOUNCE_THRESH  2
+
+// Gap Timeout: How long to wait (in 10ms loops) before deciding the swipe is finished.
+// 50 * 10ms = 500ms grace period between buttons.
+#define SWIPE_GAP_LIMIT  50
 
 // Screen Resolution is 128x64. Center is (64, 32).
 // Button Mapping:
@@ -103,6 +107,7 @@ int main(void) {
     // Pattern Logic Variables
     uint8_t current_path[10]; // Stores the user's sequence
     uint8_t path_idx = 0;
+    uint16_t gap_timer = 0; // Timer to track "no touch" duration
     
     // Visual State Management
     // 0 = Hollow (Inactive), 1 = Filled (Active)
@@ -149,6 +154,7 @@ int main(void) {
             
             // If user is touching buttons, record the path
             if (any_pressed_now) {
+                gap_timer = 0; // Reset the gap timer   
                 for(uint8_t i = 0; i < 5; i++) {
                     // If button is pressed AND not already in path
                     if (current_btn_state[i] && !isNodeInPath(i, current_path, path_idx)) {
@@ -159,18 +165,28 @@ int main(void) {
                     }
                 }
             } 
-            // If user released everything AND we have a path recorded -> VALIDATE
-            else if (path_idx > 0) {
-                if (checkPassword(current_path, path_idx)) {
-                    lock_state = 1; // Success
-                    SetRGBs(0, 255, 0); // GREEN
-                } else {
-                    lock_state = 2; // Fail
-                    SetRGBs(255, 0, 0); // RED
+            else {
+                // No touch detected. Are we in a gap or finished?
+                if (path_idx > 0) {
+                    // We have a path recorded, but finger is lifted.
+                    // Start counting.
+                    gap_timer++;
+                    
+                    if (gap_timer > SWIPE_GAP_LIMIT) {
+                        // Timeout exceeded. Swipe is officially done. Validate now.
+                        if (checkPassword(current_path, path_idx)) {
+                            lock_state = 1; // Success
+                            SetRGBs(0, 255, 0); // GREEN
+                        } else {
+                            lock_state = 2; // Fail
+                            SetRGBs(255, 0, 0); // RED
+                        }
+                        result_timer = 100; // Show result for 1s
+                        gap_timer = 0;      // Reset for next time
+                    }
                 }
-                result_timer = 100; // Hold result temporarily
             }
-        } 
+        }
         else { // STATE: SHOW RESULT (Success or Fail)
             if (result_timer > 0) {
                 result_timer--;
@@ -178,6 +194,7 @@ int main(void) {
                 // Reset everything after delay
                 lock_state = 0;
                 path_idx = 0;
+                gap_timer = 0;
                 for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
             }
         }
