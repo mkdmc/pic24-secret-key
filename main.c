@@ -3,6 +3,22 @@
 // Debounce Threshold: Button must be stable for this many cycles to register
 #define DEBOUNCE_THRESH  4
 
+// Screen Resolution is 128x64. Center is (64, 32).
+// Button Mapping:
+// Index 0: Up
+// Index 1: Right
+// Index 2: Down
+// Index 3: Left
+// Index 4: Center (Pin AN12/RB12)
+
+const uint8_t btnX[5] = {64, 104, 64, 24, 64}; // X positions
+const uint8_t btnY[5] = {12, 32, 52, 32, 32};  // Y positions
+const uint8_t RADIUS = 6;                      // Circle Radius
+
+// --- PASSWORD CONFIGURATION ---
+const uint8_t PASSWORD[] = {0, 4, 1}; 
+const uint8_t PASS_LEN = 3;
+
 // Delay function using Timer1
 void delay(unsigned int milliseconds) {
     T1CONbits.TCKPS = 0b11; // Prescale 1:256
@@ -46,17 +62,26 @@ void drawFilledCircle(uint8_t x1, uint8_t y1, uint8_t r) {
     }
 }
 
-// Screen Resolution is 128x64. Center is (64, 32).
-// Button Mapping:
-// Index 0: Up
-// Index 1: Right
-// Index 2: Down
-// Index 3: Left
-// Index 4: Center (Pin AN12/RB12)
+// Check if a button ID is already in the current path
+// Returns 1 if present, 0 if not
+uint8_t isNodeInPath(uint8_t id, uint8_t path[], uint8_t len) {
+    uint8_t i;
+    for(i=0; i<len; i++) {
+        if (path[i] == id) return 1;
+    }
+    return 0;
+}
 
-const uint8_t btnX[5] = {64, 104, 64, 24, 64}; // X positions
-const uint8_t btnY[5] = {12, 32, 52, 32, 32};  // Y positions
-const uint8_t RADIUS = 6;                      // Circle Radius
+// Compare entered path with password
+uint8_t checkPassword(uint8_t path[], uint8_t len) {
+    if (len != PASS_LEN) return 0;
+    
+    uint8_t i;
+    for(i=0; i<len; i++) {
+        if (path[i] != PASSWORD[i]) return 0;
+    }
+    return 1;
+}
 
 int main(void) {
     // Hardware Initialization
@@ -75,13 +100,24 @@ int main(void) {
     // current_btn_state: The "clean" on/off state used for logic/drawing
     uint8_t current_btn_state[5] = {0, 0, 0, 0, 0};
     
-    // Array to track the previous state of buttons to optimize drawing
-    // Initialize to 0xFF to force an initial draw
-    uint8_t prev_drawn_state[5]  = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    // Pattern Logic Variables
+    uint8_t current_path[10]; // Stores the user's sequence
+    uint8_t path_idx = 0;
+    
+    // Visual State Management
+    // 0 = Hollow (Inactive), 1 = Filled (Active)
+    uint8_t node_visual_state[5] = {0,0,0,0,0}; 
+    uint8_t prev_visual_state[5] = {255,255,255,255,255}; // Force initial draw
+    
+    // Result feedback timer
+    uint16_t result_timer = 0;
+    uint8_t lock_state = 0; // 0: Input, 1: Success Show, 2: Fail Show
     
     while(1) { 
         // Read touch sensors; updates the global 'buttons' array
-        ReadCTMU(); 
+        ReadCTMU();
+        
+        uint8_t any_pressed_now = 0;
         
         // We filter the raw 'buttons[]' into 'current_btn_state[]'
         for(uint8_t i = 0; i < 5; i++) {
@@ -105,14 +141,52 @@ int main(void) {
             } else if (debounce_counters[i] == 0) {
                 current_btn_state[i] = 0;
             }
-            // If counter is between 0 and THRESH, keep previous state (ignore noise)
+            if (current_btn_state[i]) any_pressed_now = 1;
+        }
+        
+        if (lock_state == 0) { // STATE: INPUT
+            SetRGBs(0, 0, 255); // Blue LED while idle/entering
+            
+            // If user is touching buttons, record the path
+            if (any_pressed_now) {
+                for(uint8_t i = 0; i < 5; i++) {
+                    // If button is pressed AND not already in path
+                    if (current_btn_state[i] && !isNodeInPath(i, current_path, path_idx)) {
+                        if (path_idx < 10) {
+                            current_path[path_idx++] = i;
+                            node_visual_state[i] = 1; // Mark visual as filled
+                        }
+                    }
+                }
+            } 
+            // If user released everything AND we have a path recorded -> VALIDATE
+            else if (path_idx > 0) {
+                if (checkPassword(current_path, path_idx)) {
+                    lock_state = 1; // Success
+                    SetRGBs(0, 255, 0); // GREEN
+                } else {
+                    lock_state = 2; // Fail
+                    SetRGBs(255, 0, 0); // RED
+                }
+                result_timer = 100; // Hold result temporarily
+            }
+        } 
+        else { // STATE: SHOW RESULT (Success or Fail)
+            if (result_timer > 0) {
+                result_timer--;
+            } else {
+                // Reset everything after delay
+                lock_state = 0;
+                path_idx = 0;
+                for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
+            }
         }
         
         // Loop through all 5 buttons
         for (uint8_t i = 0; i < 5; i++) {
             
             // Only redraw if the state of the button has changed
-            if (current_btn_state[i] != prev_drawn_state[i]) {
+            if (node_visual_state[i] != prev_visual_state[i]) {
                 
                 // 1. Erase the old shape
                 // We draw a black filled circle to clear the area completely
@@ -122,7 +196,7 @@ int main(void) {
                 // 2. Draw the new shape
                 SetColor(WHITE);
                 
-                if (current_btn_state[i] == 1) {
+                if (node_visual_state[i] == 1) {
                     // STATE: PRESSED
                     // Draw a solid white circle (Active node)
                     drawFilledCircle(btnX[i], btnY[i], RADIUS);
@@ -134,17 +208,9 @@ int main(void) {
                 }
                 
                 // Update state tracker
-                prev_drawn_state[i] = current_btn_state[i];
+                prev_visual_state[i] = node_visual_state[i];
             }
         }
-        
-        // Light up RGB LED Green if any button is pressed
-        uint8_t anyPressed = 0;
-        for(uint8_t j=0; j<5; j++) { if(current_btn_state[j]) anyPressed = 1; }
-        
-        if(anyPressed) SetRGBs(0, 255, 0); // Green
-        else SetRGBs(0, 0, 0);             // Off
-
         delay(10); // Short delay to debounce and limit refresh rate
     }
     
