@@ -20,8 +20,19 @@ const uint8_t btnY[5] = {12, 32, 52, 32, 32};  // Y positions
 const uint8_t RADIUS = 6;                      // Circle Radius
 
 // --- PASSWORD CONFIGURATION ---
-const uint8_t PASSWORD[] = {0, 4, 1}; 
-const uint8_t PASS_LEN = 3;
+uint8_t PASSWORD[10];
+uint8_t PASS_LEN = 0;
+
+// Application States
+enum AppState {
+    STATE_SET_PATTERN = 0, // Recording new password
+    STATE_CONFIRM_SET,     // Visual feedback that pass is saved
+    STATE_INPUT,           // Locked: Waiting for unlock attempt
+    STATE_SUCCESS,         // Unlocked
+    STATE_FAIL             // Wrong password
+};
+
+uint8_t current_state = STATE_SET_PATTERN;
 
 // Delay function using Timer1
 void delay(unsigned int milliseconds) {
@@ -108,6 +119,7 @@ int main(void) {
     uint8_t current_path[10]; // Stores the user's sequence
     uint8_t path_idx = 0;
     uint16_t gap_timer = 0; // Timer to track "no touch" duration
+    uint16_t state_timer = 0; // Generic timer for state transitions
     
     // Visual State Management
     // 0 = Hollow (Inactive), 1 = Filled (Active)
@@ -149,53 +161,95 @@ int main(void) {
             if (current_btn_state[i]) any_pressed_now = 1;
         }
         
-        if (lock_state == 0) { // STATE: INPUT
-            SetRGBs(0, 0, 255); // Blue LED while idle/entering
+if (current_state == STATE_SET_PATTERN) {
+            // INDICATOR: Pulse Magenta to indicate "Recording Mode"
+            SetRGBs(100, 0, 100); 
             
-            // If user is touching buttons, record the path
             if (any_pressed_now) {
-                gap_timer = 0; // Reset the gap timer   
+                gap_timer = 0;
                 for(uint8_t i = 0; i < 5; i++) {
-                    // If button is pressed AND not already in path
                     if (current_btn_state[i] && !isNodeInPath(i, current_path, path_idx)) {
                         if (path_idx < 10) {
                             current_path[path_idx++] = i;
-                            node_visual_state[i] = 1; // Mark visual as filled
+                            node_visual_state[i] = 1; // Visual feedback
                         }
                     }
                 }
             } 
-            else {
-                // No touch detected. Are we in a gap or finished?
-                if (path_idx > 0) {
-                    // We have a path recorded, but finger is lifted.
-                    // Start counting.
-                    gap_timer++;
+            else if (path_idx > 0) {
+                // User lifted finger after starting a pattern
+                gap_timer++;
+                if (gap_timer > SWIPE_GAP_LIMIT) {
+                    // Pattern complete. Save it.
+                    for(uint8_t k=0; k<path_idx; k++) PASSWORD[k] = current_path[k];
+                    PASS_LEN = path_idx;
                     
-                    if (gap_timer > SWIPE_GAP_LIMIT) {
-                        // Timeout exceeded. Swipe is officially done. Validate now.
-                        if (checkPassword(current_path, path_idx)) {
-                            lock_state = 1; // Success
-                            SetRGBs(0, 255, 0); // GREEN
-                        } else {
-                            lock_state = 2; // Fail
-                            SetRGBs(255, 0, 0); // RED
-                        }
-                        result_timer = 100; // Show result for 1s
-                        gap_timer = 0;      // Reset for next time
-                    }
+                    // Reset and move to confirmation
+                    gap_timer = 0;
+                    path_idx = 0;
+                    for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
+                    
+                    current_state = STATE_CONFIRM_SET;
+                    state_timer = 100; // 1 second confirmation
                 }
             }
         }
-        else { // STATE: SHOW RESULT (Success or Fail)
-            if (result_timer > 0) {
-                result_timer--;
-            } else {
-                // Reset everything after delay
-                lock_state = 0;
-                path_idx = 0;
+        else if (current_state == STATE_CONFIRM_SET) {
+            // INDICATOR: Rapid Cyan Flash to confirm "Password Set"
+            if ((state_timer / 10) % 2 == 0) SetRGBs(0, 255, 255);
+            else SetRGBs(0, 0, 0);
+            
+            if (state_timer > 0) state_timer--;
+            else current_state = STATE_INPUT; // Go to locked mode
+        }
+        else if (current_state == STATE_INPUT) {
+            // INDICATOR: Solid Blue (Locked)
+            SetRGBs(0, 0, 255);
+            
+            if (any_pressed_now) {
                 gap_timer = 0;
+                for(uint8_t i = 0; i < 5; i++) {
+                    if (current_btn_state[i] && !isNodeInPath(i, current_path, path_idx)) {
+                        if (path_idx < 10) {
+                            current_path[path_idx++] = i;
+                            node_visual_state[i] = 1;
+                        }
+                    }
+                }
+            } 
+            else if (path_idx > 0) {
+                gap_timer++;
+                if (gap_timer > SWIPE_GAP_LIMIT) {
+                    // Validate
+                    if (checkPassword(current_path, path_idx)) {
+                        current_state = STATE_SUCCESS;
+                    } else {
+                        current_state = STATE_FAIL;
+                    }
+                    
+                    // Reset input buffers
+                    gap_timer = 0;
+                    path_idx = 0;
+                    state_timer = 150; // Show result for 1.5s
+                }
+            }
+        }
+        else if (current_state == STATE_SUCCESS) {
+            SetRGBs(0, 255, 0); // Green
+            if (state_timer > 0) state_timer--;
+            else {
+                // Clear visual state and return to lock
                 for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
+                current_state = STATE_INPUT; 
+            }
+        }
+        else if (current_state == STATE_FAIL) {
+            SetRGBs(255, 0, 0); // Red
+            if (state_timer > 0) state_timer--;
+            else {
+                // Clear visual state and return to lock
+                for(uint8_t k=0; k<5; k++) node_visual_state[k] = 0;
+                current_state = STATE_INPUT;
             }
         }
         
