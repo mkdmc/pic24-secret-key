@@ -44,7 +44,11 @@ $ git clone git://github.com/mkdmc/pic24-secret-key.git
 
 ## File Structure
 main.c – Application logic (pattern lock state machine, graphics, noise filtering)
+
 TouchSense.c – Handles low-level CTMU initialization, calibration, and reading of the 5 capacitive touch pads.
+
 SH1101A.c – Driver for the OLED display, managing PMP communication and screen buffer updates.
+
 RGBLeds.c – Controls the RGB LED color mixing using Output Compare (PWM) timers.
+
 PIC24FStarter.h - Configuration bits and hardware definitions for the specific starter kit board.
