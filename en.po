@@ -1,0 +1,155 @@
+msgid "S_WELCOME"
+msgstr "Welcome!"
+
+msgid "S_PRESS_CENTER"
+msgstr "Press Center..."
+
+msgid "S_SET_DATE"
+msgstr "Set Date:"
+
+msgid "S_SET_TIME"
+msgstr "Set Time:"
+
+msgid "S_TUTORIAL_TITLE"
+msgstr "Tutorial"
+
+msgid "S_TUT_1"
+msgstr "In the next screen"
+
+msgid "S_TUT_2"
+msgstr "you draw a pattern"
+
+msgid "S_TUT_3"
+msgstr "as your password."
+
+msgid "S_MENU_ADMIN"
+msgstr "ADMIN MENU"
+
+msgid "S_MENU_USER"
+msgstr "USER MENU"
+
+msgid "S_M_CHANGE_PASS"
+msgstr "Change Password"
+
+msgid "S_M_CREATE_USER"
+msgstr "Create new user"
+
+msgid "S_M_PERMS"
+msgstr "Set Permissions"
+
+msgid "S_M_LANG"
+msgstr "Language"
+
+msgid "S_M_LOGS"
+msgstr "AdminLogs"
+
+msgid "S_M_ADVANCED"
+msgstr "Advanced"
+
+msgid "S_M_EXIT"
+msgstr "Exit"
+
+msgid "S_DOOR_MENU"
+msgstr "DOOR MENU"
+
+msgid "S_OPEN_AS_G1"
+msgstr "Open as Guest 1"
+
+msgid "S_OPEN_AS_G2"
+msgstr "Open as Guest 2"
+
+msgid "S_OPEN_AS_ADMIN"
+msgstr "Open as Admin"
+
+msgid "S_SETTINGS"
+msgstr "Settings"
+
+msgid "S_LOGIN_SETTINGS"
+msgstr "LOGIN SETTINGS"
+
+msgid "S_LOGIN_AS_G1"
+msgstr "Login as Guest 1"
+
+msgid "S_LOGIN_AS_G2"
+msgstr "Login as Guest 2"
+
+msgid "S_LOGIN_AS_ADMIN"
+msgstr "Login as Admin"
+
+msgid "S_BACK"
+msgstr "Back"
+
+msgid "S_DOOR_UNLOCKED"
+msgstr "Door Unlocked"
+
+msgid "S_INCORRECT_PASS"
+msgstr "Incorrect Password"
+
+msgid "S_PASS_SAVED"
+msgstr "Password Saved!"
+
+msgid "S_MSG_NO_USERS"
+msgstr "No users created"
+
+msgid "S_MSG_USER_LIMIT_1"
+msgstr "Creating more"
+
+msgid "S_MSG_USER_LIMIT_2"
+msgstr "users is not"
+
+msgid "S_MSG_USER_LIMIT_3"
+msgstr "allowed."
+
+msgid "S_LOGS_TITLE"
+msgstr "ADMIN LOGS"
+
+msgid "S_LOGS_NONE"
+msgstr "No Logs Found"
+
+msgid "S_LANG_SELECT"
+msgstr "Select Language"
+
+msgid "S_M_LOGIN_SESSIONS"
+msgstr "Login Sessions"
+
+msgid "S_CONF_TITLE"
+msgstr "USER CONFIG"
+
+msgid "S_LBL_ACTIVE"
+msgstr "Active:"
+
+msgid "S_LBL_CHG_PW"
+msgstr "Chg PW:"
+
+msgid "S_ACC_TYPE"
+msgstr "Acc:"
+
+msgid "S_LBL_COUNT"
+msgstr "Cnt:"
+
+msgid "S_ACC_PERM"
+msgstr "Perm"
+
+msgid "S_ACC_ONCE"
+msgstr "1-Time"
+
+msgid "S_ACC_MULTI"
+msgstr "Multi"
+
+msgid "S_NEXT"
+msgstr "Next >"
+
+msgid "S_SAVE"
+msgstr "Save"
+
+msgid "S_ACCESS_DENIED"
+msgstr "Access Expired"
+
+msgid "S_REMAINING"
+msgstr "Rem:"
+
+msgid "S_M_LOGIN_U1"
+msgstr "Login as User 1"
+
+msgid "S_M_LOGIN_U2"
+msgstr "Login as User 2"

@@ -1,0 +1,155 @@
+msgid "S_WELCOME"
+msgstr "Willkommen!"
+
+msgid "S_PRESS_CENTER"
+msgstr "Drücken Sie Mitte"
+
+msgid "S_SET_DATE"
+msgstr "Datum:"
+
+msgid "S_SET_TIME"
+msgstr "Uhrzeit:"
+
+msgid "S_TUTORIAL_TITLE"
+msgstr "Anleitung"
+
+msgid "S_TUT_1"
+msgstr "Im nächsten Bild"
+
+msgid "S_TUT_2"
+msgstr "ein Muster als"
+
+msgid "S_TUT_3"
+msgstr "Passwort zeichnen."
+
+msgid "S_MENU_ADMIN"
+msgstr "ADMIN MENÜ"
+
+msgid "S_MENU_USER"
+msgstr "BENUTZER MENÜ"
+
+msgid "S_M_CHANGE_PASS"
+msgstr "Passwort ändern"
+
+msgid "S_M_CREATE_USER"
+msgstr "Neuer Benutzer"
+
+msgid "S_M_PERMS"
+msgstr "Berechtigungen"
+
+msgid "S_M_LANG"
+msgstr "Sprache"
+
+msgid "S_M_LOGS"
+msgstr "AdminLogs"
+
+msgid "S_M_ADVANCED"
+msgstr "Erweitert"
+
+msgid "S_M_EXIT"
+msgstr "Verlassen"
+
+msgid "S_DOOR_MENU"
+msgstr "TÜR MENÜ"
+
+msgid "S_OPEN_AS_G1"
+msgstr "Öffnen als Gast 1"
+
+msgid "S_OPEN_AS_G2"
+msgstr "Öffnen als Gast 2"
+
+msgid "S_OPEN_AS_ADMIN"
+msgstr "Öffnen als Admin"
+
+msgid "S_SETTINGS"
+msgstr "Einst."
+
+msgid "S_LOGIN_SETTINGS"
+msgstr "LOGIN EINST."
+
+msgid "S_LOGIN_AS_G1"
+msgstr "Login als Gast 1"
+
+msgid "S_LOGIN_AS_G2"
+msgstr "Login als Gast 2"
+
+msgid "S_LOGIN_AS_ADMIN"
+msgstr "Login als Admin"
+
+msgid "S_BACK"
+msgstr "Zurück"
+
+msgid "S_DOOR_UNLOCKED"
+msgstr "Tür Entriegelt"
+
+msgid "S_INCORRECT_PASS"
+msgstr "Falsches Passwort"
+
+msgid "S_PASS_SAVED"
+msgstr "Passwort Gesp.!"
+
+msgid "S_MSG_NO_USERS"
+msgstr "Keine Benutzer"
+
+msgid "S_MSG_USER_LIMIT_1"
+msgstr "Keine weiteren"
+
+msgid "S_MSG_USER_LIMIT_2"
+msgstr "Benutzer"
+
+msgid "S_MSG_USER_LIMIT_3"
+msgstr "erlaubt."
+
+msgid "S_LOGS_TITLE"
+msgstr "ADMIN PROTOKOLL"
+
+msgid "S_LOGS_NONE"
+msgstr "Keine Protokolle"
+
+msgid "S_LANG_SELECT"
+msgstr "Sprache Wählen"
+
+msgid "S_M_LOGIN_SESSIONS"
+msgstr "Anmeldeprotokoll"
+
+msgid "S_CONF_TITLE"
+msgstr "BENUTZER KONFIG"
+
+msgid "S_LBL_ACTIVE"
+msgstr "Aktiv:"
+
+msgid "S_LBL_CHG_PW"
+msgstr "PW Änd:"
+
+msgid "S_ACC_TYPE"
+msgstr "Zug:"
+
+msgid "S_LBL_COUNT"
+msgstr "Anz:"
+
+msgid "S_ACC_PERM"
+msgstr "Immer"
+
+msgid "S_ACC_ONCE"
+msgstr "1-Mal"
+
+msgid "S_ACC_MULTI"
+msgstr "Multi"
+
+msgid "S_NEXT"
+msgstr "Weiter >"
+
+msgid "S_SAVE"
+msgstr "Speich."
+
+msgid "S_ACCESS_DENIED"
+msgstr "Zugriff Abgel."
+
+msgid "S_REMAINING"
+msgstr "Verb:"
+
+msgid "S_M_LOGIN_U1"
+msgstr "Login als User 1"
+
+msgid "S_M_LOGIN_U2"
+msgstr "Login als User 2"
