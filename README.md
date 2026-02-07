@@ -78,7 +78,7 @@ The system maintains a persistent log history stored in Flash memory to track us
 ### 7. Hardware Handling
 
 * **Debouncing:** The code implements software debouncing to prevent false touches or noise from registering as input.
-* **Idle Timeout:** If a user starts drawing a pattern but stops, the system resets after a timeout.
+* **Idle Timeout:** If a user stops drawing for a set time, the system assumes the pattern is complete and automatically submits it for verification.
 * **Screen Drawing:** Custom graphics routines are implemented to draw strings, numbers, and lines using Bresenham's line algorithm on the 128x64 display.
 
 
